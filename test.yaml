@@ -1,0 +1,183 @@
+config:
+  plugins:
+    apdex: {}
+    ensure: {}
+  apdex:
+    threshold: 1000
+  ensure:
+    maxErrorRate: 500
+  processor: "./generateUserData.js"
+  environments:
+    serverless:
+      target: "https://m45nr7myn2.execute-api.us-east-1.amazonaws.com/Prod"
+      phases:
+        - duration: 10
+          arrivalRate: 5
+          name: "Warming up"
+        - duration: 20
+          arrivalRate: 5
+          rampTo: 10
+          name: "Ramping up"
+        - duration: 30
+          arrivalRate: 10
+          rampTo: 10
+          name: "Sustained load"
+
+    monolith:
+      target: "http://54.82.49.254:8080"
+      phases:
+        - duration: 10
+          arrivalRate: 5
+          name: "Warming up"
+        - duration: 20
+          arrivalRate: 5
+          rampTo: 10
+          name: "Ramping up"
+        - duration: 30
+          arrivalRate: 10
+          rampTo: 10
+          name: "Sustained load"
+
+scenarios:
+  - name: "Complete Lifecycle in a Single Flow"
+    flow:
+      - function: "generateUsername"
+      - function: "generateEmail"
+      - post:
+          url: "/users"
+          json:
+            username: "{{ username }}"
+            password: "password"
+            name: "TestName"
+            last_name: "TestLastName"
+            date: "1990-01-01T00:00:00Z"
+            email: "{{ email }}"
+          capture:
+            - json: "$.id"
+              as: "userID"
+            - json: "$.username"
+              as: "reqUsername"
+
+      - post:
+          url: "/login"
+          json:
+            username: "{{ reqUsername }}"
+            password: "password"
+          capture:
+            json: "$.token"
+            as: "loginToken"
+
+      - put:
+          url: "/users"
+          headers:
+            Authorization: "Bearer {{ loginToken }}"
+          json:
+            id: "{{ userID }}"
+            password: "password123"
+            old_password: "password"
+
+      - post:
+          url: "/categories"
+          headers:
+            Authorization: "Bearer {{ loginToken }}"
+          json:
+            user_id: "{{ userID }}"
+            title: "New Category"
+            type: "credit"
+            description: "Description of new category"
+          capture:
+            json: "$.id"
+            as: "categoryID"
+
+      - put:
+          url: "/categories"
+          headers:
+            Authorization: "Bearer {{ loginToken }}"
+          json:
+            id: "{{ categoryID }}"
+            title: "Update title Category"
+            description: "Updated description Category"
+
+      - get:
+          url: "/categories"
+          headers:
+            Authorization: "Bearer {{ loginToken }}"
+          qs:
+            user_id: "{{ userID }}"
+            type: "credit"
+
+      - get:
+          url: "/categories/{{ categoryID }}"
+          headers:
+            Authorization: "Bearer {{ loginToken }}"
+
+      - post:
+          url: "/accounts"
+          headers:
+            Authorization: "Bearer {{ loginToken }}"
+          json:
+            user_id: "{{ userID }}"
+            category_id: "{{ categoryID }}"
+            title: "New Account"
+            type: "credit"
+            description: "Description of new account"
+            value: 100
+            date: "2010-01-01T00:00:00Z"
+          capture:
+            json: "$.id"
+            as: "accountID"
+
+      - put:
+          url: "/accounts"
+          headers:
+            Authorization: "Bearer {{ loginToken }}"
+          json:
+            id: "{{ accountID }}"
+            title: "Update title Account"
+            description: "Updated description Account"
+            value: 200
+
+      - get:
+          url: "/accounts"
+          headers:
+            Authorization: "Bearer {{ loginToken }}"
+          qs:
+            user_id: "{{ userID }}"
+            type: "credit"
+
+      - get:
+          url: "/accounts/{{ accountID }}"
+          headers:
+            Authorization: "Bearer {{ loginToken }}"
+
+      - get:
+          url: "/accounts/graph/{{ userID }}/credit"
+          headers:
+            Authorization: "Bearer {{ loginToken }}"
+
+      - get:
+          url: "/accounts/reports/{{ userID }}/credit"
+          headers:
+            Authorization: "Bearer {{ loginToken }}"
+
+      - get:
+          url: "/users"
+
+      - get:
+          url: "/users/{{ userID }}"
+
+      - get:
+          url: "/users/username/{{ reqUsername }}"
+
+      - delete:
+          url: "/accounts/{{ accountID }}"
+          headers:
+            Authorization: "Bearer {{ loginToken }}"
+
+      - delete:
+          url: "/categories/{{ categoryID }}"
+          headers:
+            Authorization: "Bearer {{ loginToken }}"
+
+      - delete:
+          url: "/users/{{ userID }}"
